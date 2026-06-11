@@ -24,6 +24,13 @@ def sanitize_filename(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(name)).strip(". ")
 
 
+def _xlsb_cell_formula(cell):
+    try:
+        return f"={cell.f}" if cell.f else cell.v
+    except AttributeError:
+        return None
+
+
 def convert_excel(input_path: Path, output_dir: Path) -> list[Path]:
     output_files = []
 
@@ -38,7 +45,7 @@ def convert_excel(input_path: Path, output_dir: Path) -> list[Path]:
 
                 data_rows = [[cell.v for cell in row] for row in all_rows]
                 formula_rows = [
-                    [f"={cell.f}" if cell.f else cell.v for cell in row]
+                    [_xlsb_cell_formula(cell) for cell in row]
                     for row in all_rows
                 ]
 
