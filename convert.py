@@ -16,7 +16,7 @@ ACCEPTED_FILE_TYPES = [
 
 EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xlsb"}
 CSV_EXTENSIONS = {".csv"}
-COBOL_EXTENSIONS = {".cbl", ".cob", ".cobol", ".cpy", ".cobc"}
+COBOL_EXTENSIONS = {".cbl", ".cob", ".cobol", ".cpy", ".cobc", ".mps", ".src", ".ct1", ".jcv", ".prv"}
 ACCEPTED_EXTENSIONS = {f".{ext}" for ext in ACCEPTED_FILE_TYPES}
 
 
