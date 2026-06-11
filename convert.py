@@ -19,16 +19,42 @@ CSV_EXTENSIONS = {".csv"}
 COBOL_EXTENSIONS = {".cbl", ".cob", ".cobol", ".cpy", ".cobc", ".mps", ".src", ".ct1", ".jcv", ".prv"}
 ACCEPTED_EXTENSIONS = {f".{ext}" for ext in ACCEPTED_FILE_TYPES}
 
-
 def sanitize_filename(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(name)).strip(". ")
 
+def _check_is_empty_formula_file(data: str) -> bool:
+    lines = data.splitlines()
+    # lines[0] is the header row — skip it, only check data rows
+    return all(line.replace(',', '').strip() == '' for line in lines[1:])
 
 def _xlsb_cell_formula(cell):
     try:
         return f"={cell.f}" if cell.f else cell.v
     except AttributeError:
         return None
+
+
+def _extract_vba_macros(input_path: Path, output_dir: Path) -> list[Path]:
+    try:
+        from oletools.olevba import VBA_Parser
+    except ImportError:
+        print(f"[WARN]  oletools not installed — skipping macro extraction for {input_path.name}", file=sys.stderr)
+        return []
+
+    vba_parser = VBA_Parser(str(input_path))
+    if not vba_parser.detect_vba_macros():
+        return []
+
+    modules = []
+    for (_, _, vba_filename, vba_code) in vba_parser.extract_macros():
+        modules.append(f"' === {vba_filename} ===\n{vba_code}")
+
+    if not modules:
+        return []
+
+    out = output_dir / f"{input_path.stem}_macro.txt"
+    out.write_text('\n\n'.join(modules), encoding='utf-8')
+    return [out]
 
 
 def convert_excel(input_path: Path, output_dir: Path) -> list[Path]:
@@ -56,8 +82,12 @@ def convert_excel(input_path: Path, output_dir: Path) -> list[Path]:
                 out_formula = output_dir / f"{base}_formula.txt"
 
                 pd.DataFrame(data_rows[1:], columns=data_rows[0]).to_csv(out_data, index=False)
-                pd.DataFrame(formula_rows[1:], columns=formula_rows[0]).to_csv(out_formula, index=False)
-                output_files.extend([out_data, out_formula])
+                if _check_is_empty_formula_file(pd.DataFrame(formula_rows[1:], columns=formula_rows[0]).to_csv(index=False)):
+                    print(f"[SKIP]  {out_formula.name} (no formulas found)")
+                    output_files.extend([out_data])
+                else:
+                    pd.DataFrame(formula_rows[1:], columns=formula_rows[0]).to_csv(out_formula, index=False)
+                    output_files.extend([out_data, out_formula])
     else:
         import openpyxl
         wb_data = openpyxl.load_workbook(input_path, data_only=True)
@@ -80,8 +110,14 @@ def convert_excel(input_path: Path, output_dir: Path) -> list[Path]:
 
             if formula_rows:
                 out_formula = output_dir / f"{base}_formula.txt"
-                pd.DataFrame(formula_rows[1:], columns=formula_rows[0]).to_csv(out_formula, index=False)
-                output_files.append(out_formula)
+                if _check_is_empty_formula_file(pd.DataFrame(formula_rows[1:], columns=formula_rows[0]).to_csv(index=False)):
+                    print(f"[SKIP]  {out_formula.name} (no formulas found)")
+                else:
+                    pd.DataFrame(formula_rows[1:], columns=formula_rows[0]).to_csv(out_formula, index=False)
+                    output_files.append(out_formula)
+
+        if input_path.suffix.lower() == ".xlsm":
+            output_files.extend(_extract_vba_macros(input_path, output_dir))
 
     return output_files
 
